@@ -3,3 +3,4 @@ wget
 pandas
 numpy
 pillow
+openpyxl
