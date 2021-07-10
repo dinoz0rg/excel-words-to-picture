@@ -4,6 +4,8 @@ import wget
 import pandas as pd
 import numpy as np
 from PIL import Image, ImageFont, ImageDraw
+import threading
+from time import sleep
 
 
 class ImageAdder:
@@ -29,6 +31,10 @@ class ImageAdder:
             pic = row['<pic_url><item>']
             print(f"Downloading: {pic}, Output: {image_file}")
             wget.download(url=pic, out=f"{download_dir}\{image_file}")  #  Download links from loop and save to downloads folder
+
+        #     download_location = f"{download_dir}\{image_file}"
+        #     threading.Thread(target=wget.download, args=(pic, download_location)).start()
+        # sleep(2)
 
     def append_images(self, num):
         image_file = f"{num}.jpg"
@@ -72,7 +78,9 @@ class ImageAdder:
         for img_filename, keyword in zip(self.images, self.keywords):
             img_array = cv2.imread(f"{download_dir}\{img_filename}")
             print(f"Procesing: {keyword}, Output: {img_filename}")
-            self._draw_to_image(img_array, keyword, img_filename, savefile_dir)
+            # self._draw_to_image(img_array, keyword, img_filename, savefile_dir)
+            t = threading.Thread(target=self._draw_to_image, args=(img_array, keyword, img_filename, savefile_dir))
+            t.start()
 
 
 if __name__ == "__main__":
