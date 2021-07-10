@@ -1,0 +1,5 @@
+opencv-python
+wget
+pandas
+numpy
+pillow

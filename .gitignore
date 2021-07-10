@@ -1,0 +1,7 @@
+/pycache
+/.idea
+/selenium
+/venv
+*.csv
+*.xlsx
+*.xls
