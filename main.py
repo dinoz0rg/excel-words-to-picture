@@ -1,11 +1,11 @@
 import cv2
 import os
 import wget
+import threading
 import pandas as pd
 import numpy as np
-from PIL import Image, ImageFont, ImageDraw
-import threading
 from time import sleep
+from PIL import Image, ImageFont, ImageDraw
 
 
 class ImageAdder:
@@ -21,20 +21,20 @@ class ImageAdder:
         for f in os.listdir(download_dir):
             os.remove(os.path.join(download_dir, f))
 
-    def download_images_from_url(self, excel_file, download_dir):
+    def download_images_from_url(self, excel_file, download_dir, img_column):
         num = 0
 
         df = pd.read_excel(excel_file)
         for index, row in df.iterrows():
             num += 1
             image_file = self.append_images(num)
-            pic = row['<pic_url><item>']
+            pic = row[img_column]
             print(f"Downloading: {pic}, Output: {image_file}")
-            wget.download(url=pic, out=f"{download_dir}\{image_file}")  #  Download links from loop and save to downloads folder
+            # wget.download(url=pic, out=f"{download_dir}\{image_file}")  #  Download links from loop and save to downloads folder
 
-        #     download_location = f"{download_dir}\{image_file}"
-        #     threading.Thread(target=wget.download, args=(pic, download_location)).start()
-        # sleep(2)
+            download_location = f"{download_dir}\{image_file}"
+            threading.Thread(target=wget.download, args=(pic, download_location)).start()
+        sleep(3)  # Change the value higher for low spec processors
 
     def append_images(self, num):
         image_file = f"{num}.jpg"
@@ -45,25 +45,35 @@ class ImageAdder:
         #     if filename.endswith(".jpg"):
         #         self.images.append(filename)
 
-    def append_keywords(self, excel_file):
+    def append_keywords(self, excel_file, keyword_column):
         df = pd.read_excel(excel_file)
         for index, row in df.iterrows():
-            self.keywords.append(row['query'])
+            self.keywords.append(row[keyword_column])
 
     def _draw_to_image(self, img, keyword, img_filename, savefile_dir):
         fontpath = "./simsun.ttc"
         font = ImageFont.truetype(fontpath, 32)
         img_pil = Image.fromarray(img)
         draw = ImageDraw.Draw(img_pil)
-        draw.text((20, 20), keyword, font=font, fill=(0, 255, 0, 0))
+
+        # get coords based on boundary
+        W, H = img_pil.size
+        w, h = draw.textsize(keyword, font=font)
+
+        # add text centered on image
+        draw.text(((W - w) / 2, (H - h) / 2), keyword, font=font, fill="white", align='middle')
         img = np.array(img_pil)
         cv2.imshow('img-{}'.format(keyword), img)
         cv2.waitKey(600)
+
         # Save the file
         cv2.imwrite(f"{savefile_dir}/{img_filename}", img)
 
     def main(self):
         excel_file = '345(1).xlsx'
+        image_column = '<pic_url><item>'
+        keyword_column = 'query'
+
         download_dir = 'downloads'
         savefile_dir = 'savefile'
 
@@ -72,8 +82,8 @@ class ImageAdder:
         self.delete_image_files(download_dir)  # Delete all files inside download folder at start
         self.delete_image_files(savefile_dir)  # Delete all files inside savefile folder at start
 
-        self.download_images_from_url(excel_file, download_dir)  # Download all images from links in excel to files, and append images to __init__
-        self.append_keywords(excel_file)  # Append keywords to __init__
+        self.download_images_from_url(excel_file, download_dir, image_column)  # Download all images from links in excel to files, and append images to __init__
+        self.append_keywords(excel_file, keyword_column)  # Append keywords to __init__
 
         for img_filename, keyword in zip(self.images, self.keywords):
             img_array = cv2.imread(f"{download_dir}\{img_filename}")
