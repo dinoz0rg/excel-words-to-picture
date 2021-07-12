@@ -21,10 +21,20 @@ class ImageAdder:
         for f in os.listdir(download_dir):
             os.remove(os.path.join(download_dir, f))
 
+    def excel_extensions(self, filename):
+        print(f"Reading file: {filename}")
+
+        df = None
+        if filename.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(filename)
+        elif filename.endswith('.csv'):
+            df = pd.read_csv(filename, sep=',', encoding='utf-8')
+        return df
+
     def download_images_from_url(self, excel_file, download_dir, img_column):
         num = 0
 
-        df = pd.read_excel(excel_file)
+        df = self.excel_extensions(excel_file)
         for index, row in df.iterrows():
             num += 1
             image_file = self.append_images(num)
@@ -46,7 +56,7 @@ class ImageAdder:
         #         self.images.append(filename)
 
     def append_keywords(self, excel_file, keyword_column):
-        df = pd.read_excel(excel_file)
+        df = self.excel_extensions(excel_file)
         for index, row in df.iterrows():
             self.keywords.append(row[keyword_column])
 
@@ -91,6 +101,7 @@ class ImageAdder:
             # self._draw_to_image(img_array, keyword, img_filename, savefile_dir)
             t = threading.Thread(target=self._draw_to_image, args=(img_array, keyword, img_filename, savefile_dir))
             t.start()
+
 
 
 if __name__ == "__main__":
