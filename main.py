@@ -1,10 +1,13 @@
-import cv2
 import os
+import cv2
 import wget
+import time
+import telepot
+import logging
+import platform
 import threading
-import pandas as pd
 import numpy as np
-from time import sleep
+import pandas as pd
 from PIL import Image, ImageFont, ImageDraw
 
 
@@ -13,38 +16,60 @@ class ImageAdder:
         self.images = []
         self.keywords = []
 
-    def create_folder(self, dir):
-        if not os.path.exists(dir):
-            os.makedirs(dir)
+        self.bot = telepot.Bot("INSERT BOT TOKEN HERE")
+        self.chatid = "INSERT CHATID HERE"
 
-    def delete_image_files(self, download_dir):
+    @staticmethod
+    def get_computer_details():
+        which_os = platform.uname()[0]
+        pc_name = platform.uname()[1]
+        processor = platform.uname()[4]
+        return which_os, pc_name, processor
+
+    @staticmethod
+    def create_folder(directory):
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+
+    @staticmethod
+    def delete_image_files(download_dir):
         for f in os.listdir(download_dir):
             os.remove(os.path.join(download_dir, f))
 
-    def excel_extensions(self, filename):
-        print(f"Reading file: {filename}")
-
+    @staticmethod
+    def excel_extensions(filename):
         df = None
         if filename.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(filename)
         elif filename.endswith('.csv'):
             df = pd.read_csv(filename, sep=',', encoding='utf-8')
+        else:
+            logging.info("Warning: Unsupported extension")
         return df
 
     def download_images_from_url(self, excel_file, download_dir, img_column):
         num = 0
 
         df = self.excel_extensions(excel_file)
-        for index, row in df.iterrows():
-            num += 1
-            image_file = self.append_images(num)
-            pic = row[img_column]
-            print(f"Downloading: {pic}, Output: {image_file}")
-            # wget.download(url=pic, out=f"{download_dir}\{image_file}")  #  Download links from loop and save to downloads folder
+        try:
+            for index, row in df.iterrows():
+                try:
+                    num += 1
+                    image_file = self.append_images(num)
+                    pic = row[img_column]
+                    print(f"Downloading: {pic}, Output: {image_file}")
+                    # wget.download(url=pic, out=f"{download_dir}\{image_file}")  #  Download links from loop and save to downloads folder
 
-            download_location = f"{download_dir}\{image_file}"
-            threading.Thread(target=wget.download, args=(pic, download_location)).start()
-        sleep(3)  # Change the value higher for low spec processors
+                    download_location = f"{download_dir}\{image_file}"
+                    threading.Thread(target=wget.download, args=(pic, download_location)).start()
+                    time.sleep(0.1)
+
+                except Exception as e:
+                    logging.info(f"Exception in download_images_from_url func, row: {row}, details: {e}")
+        except Exception as e:
+            print(f"Exception in download_images_from_url (for loop) func, details: {e}")
+
+        # sleep(10)  # Change the value higher for low spec processors
 
     def append_images(self, num):
         image_file = f"{num}.jpg"
@@ -61,49 +86,102 @@ class ImageAdder:
             self.keywords.append(row[keyword_column])
 
     def _draw_to_image(self, img, keyword, img_filename, savefile_dir):
-        fontpath = "./simsun.ttc"
-        font = ImageFont.truetype(fontpath, 32)
-        img_pil = Image.fromarray(img)
-        draw = ImageDraw.Draw(img_pil)
+        try:
+            fontpath = "./simsun.ttc"
+            font = ImageFont.truetype(fontpath, 32)
 
-        # get coords based on boundary
-        W, H = img_pil.size
-        w, h = draw.textsize(keyword, font=font)
+            img_pil = Image.fromarray(img)
+            draw = ImageDraw.Draw(img_pil)
 
-        # add text centered on image
-        draw.text(((W - w) / 2, (H - h) / 2), keyword, font=font, fill="white", align='middle')
-        img = np.array(img_pil)
-        cv2.imshow('img-{}'.format(keyword), img)
-        cv2.waitKey(600)
+            # get coords based on boundary
+            W, H = img_pil.size
+            w, h = draw.textsize(keyword, font=font)
 
-        # Save the file
-        cv2.imwrite(f"{savefile_dir}/{img_filename}", img)
+            # add text centered on image
+            draw.text(((W - w) / 2, (H - h) / 2), keyword, font=font, fill="white", align='middle')
+            img = np.array(img_pil)
+            cv2.imshow('img-{}'.format(keyword), img)
+            cv2.waitKey(600)
+
+            # Save the file
+            cv2.imwrite(f"{savefile_dir}/{img_filename}", img)
+
+        except Exception as e:
+            if "cannot open resource" in str(e):
+                time.sleep(1)
+                self._draw_to_image(img, keyword, img_filename, savefile_dir)
+            else:
+                logging.info(f"Exception in _draw_to_image func, details: {e}, more details: {img}")
+
+    def send_logfile_to_telegram(self, logger_filename):
+        try:
+            self.bot.sendDocument(chat_id=self.chatid, document=(open(logger_filename, "rb")))
+        except Exception as e:
+            if "file must be non-empty" in str(e):
+                self.bot.sendMessage(chat_id=self.chatid, text="Theres no error while running the tool, awesome!")
+            else:
+                self.bot.sendMessage(chat_id=self.chatid, text=f"Error found, details: {e}")
+
+    def send_to_telegram(self, send_to_telegram, type, logger_filename=None, text=None):
+        if send_to_telegram:
+            if type == "msg":
+                self.bot.sendMessage(chat_id=self.chatid, text=text)
+            if type == "doc":
+                self.send_logfile_to_telegram(logger_filename)
 
     def main(self):
-        excel_file = '345(1).xlsx'
+        t1 = time.time()
+
+        excel_file = 'test-jpg - Copy.xlsx'
         image_column = '<pic_url><item>'
         keyword_column = 'query'
 
         download_dir = 'downloads'
         savefile_dir = 'savefile'
+        logger_filename = 'errors.log'
+
+        send_to_telegram = True  # True if you want to send alerts on telegram, False if you dont want to send alerts
+
+        which_os, pc_name, processor = self.get_computer_details()
+        self.send_to_telegram(send_to_telegram, "msg", text=f"Process started on: {pc_name}")
 
         self.create_folder(download_dir)  # Create initial download folder if not exist
         self.create_folder(savefile_dir)  # Create initial savefile folder if not exist
         self.delete_image_files(download_dir)  # Delete all files inside download folder at start
         self.delete_image_files(savefile_dir)  # Delete all files inside savefile folder at start
 
+        excel_length = len(self.excel_extensions(excel_file).index)
+        self.send_to_telegram(send_to_telegram, "msg", text=f"Filename: {excel_file}, rows to process: {excel_length}")
+
         self.download_images_from_url(excel_file, download_dir, image_column)  # Download all images from links in excel to files, and append images to __init__
         self.append_keywords(excel_file, keyword_column)  # Append keywords to __init__
 
         for img_filename, keyword in zip(self.images, self.keywords):
-            img_array = cv2.imread(f"{download_dir}\{img_filename}")
-            print(f"Procesing: {keyword}, Output: {img_filename}")
-            # self._draw_to_image(img_array, keyword, img_filename, savefile_dir)
-            t = threading.Thread(target=self._draw_to_image, args=(img_array, keyword, img_filename, savefile_dir))
-            t.start()
+            time.sleep(0.1)
+            try:
+                img_array = cv2.imread(f"{download_dir}\{img_filename}")
+                print(f"Procesing: {keyword}, Output: {img_filename}")
+                # self._draw_to_image(img_array, keyword, img_filename, savefile_dir)
+                t = threading.Thread(target=self._draw_to_image, args=(img_array, keyword, img_filename, savefile_dir))
+                t.start()
 
+            except Exception as e:
+                logging.info(f"Exception in main (for_loop) func, details: {e}")
+        self.send_to_telegram(send_to_telegram, "doc", logger_filename)
+
+        t2 = time.time()
+        print(f"Total time taken: {round(t2 - t1, 2)}s")
+        self.send_to_telegram(send_to_telegram, "msg", text=f"Process finished, time taken: {round(t2 - t1, 2)}s")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        filename="errors.log",
+        filemode="w",
+        level=logging.INFO,
+        format='[%(asctime)s] {%(pathname)s:%(lineno)d} %(levelname)s - %(message)s',
+        datefmt='%d-%m-%Y %H:%M:%S'
+    )
+
     i = ImageAdder()
     i.main()
