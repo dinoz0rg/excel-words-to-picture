@@ -80,12 +80,14 @@ class ImageAdder:
         #     if filename.endswith(".jpg"):
         #         self.images.append(filename)
 
-    def append_keywords(self, excel_file, keyword_column):
+    def append_keywords(self, excel_file, keyword_column, append_offline=None):
         df = self.excel_extensions(excel_file)
         for index, row in df.iterrows():
             self.keywords.append(row[keyword_column])
+            if append_offline:
+                self.images.append(row['<pic_url><item>'])
 
-    def _draw_to_image(self, img, keyword, img_filename, savefile_dir):
+    def _draw_to_image(self, img, keyword, img_filename, savefile_dir, savefile_name):
         try:
             fontpath = "./simsun.ttc"
             font = ImageFont.truetype(fontpath, 32)
@@ -104,7 +106,8 @@ class ImageAdder:
             cv2.waitKey(600)
 
             # Save the file
-            cv2.imwrite(f"{savefile_dir}/{img_filename}", img)
+            # cv2.imwrite(f"{savefile_dir}/{img_filename}", img)
+            cv2.imwrite(f"{savefile_dir}/{savefile_name}", img)
 
         except Exception as e:
             if "cannot open resource" in str(e):
@@ -140,29 +143,35 @@ class ImageAdder:
         savefile_dir = 'savefile'
         logger_filename = 'errors.log'
 
-        send_to_telegram = True  # True if you want to send alerts on telegram, False if you dont want to send alerts
+        send_to_telegram = False  # True if you want to send alerts on telegram, False if you dont want to send alerts
+        enable_offline_mode = False  # True if you want to use offline images, False goes otherwise (Excel must use this format: https://i.imgur.com/M0wGMu0.png, https://i.imgur.com/ftF9ERt.png)
 
         which_os, pc_name, processor = self.get_computer_details()
-        self.send_to_telegram(send_to_telegram, "msg", text=f"Process started on: {pc_name}")
+        self.send_to_telegram(send_to_telegram, "msg", text=f"Process started on: {pc_name}:{processor}, enabled offline mode: {enable_offline_mode}")
 
         self.create_folder(download_dir)  # Create initial download folder if not exist
         self.create_folder(savefile_dir)  # Create initial savefile folder if not exist
-        self.delete_image_files(download_dir)  # Delete all files inside download folder at start
         self.delete_image_files(savefile_dir)  # Delete all files inside savefile folder at start
 
         excel_length = len(self.excel_extensions(excel_file).index)
         self.send_to_telegram(send_to_telegram, "msg", text=f"Filename: {excel_file}, rows to process: {excel_length}")
 
-        self.download_images_from_url(excel_file, download_dir, image_column)  # Download all images from links in excel to files, and append images to __init__
-        self.append_keywords(excel_file, keyword_column)  # Append keywords to __init__
+        if not enable_offline_mode:
+            self.delete_image_files(download_dir)  # Delete all files inside download folder at start
+            self.download_images_from_url(excel_file, download_dir, image_column)  # Download all images from links in excel to files, and append images to __init__
+        self.append_keywords(excel_file, keyword_column, enable_offline_mode)  # Append keywords to __init__
 
+        num = 0
         for img_filename, keyword in zip(self.images, self.keywords):
+            num += 1
+            savefile_name = f"{num}.jpg"
+
             time.sleep(0.1)
             try:
                 img_array = cv2.imread(f"{download_dir}\{img_filename}")
-                print(f"Procesing: {keyword}, Output: {img_filename}")
+                print(f"Procesing: {keyword}, Output: {savefile_name}")
                 # self._draw_to_image(img_array, keyword, img_filename, savefile_dir)
-                t = threading.Thread(target=self._draw_to_image, args=(img_array, keyword, img_filename, savefile_dir))
+                t = threading.Thread(target=self._draw_to_image, args=(img_array, keyword, img_filename, savefile_dir, savefile_name))
                 t.start()
 
             except Exception as e:
